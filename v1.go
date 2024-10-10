@@ -18,8 +18,23 @@ import (
 )
 
 // Configuration
+type Config struct {
+	ClientID     string `yaml:"client_id"`
+	ClientSecret string `yaml:"client_secret"`
+	RedirectURL  string `yaml:"redirect_url"`
+	WebhookURL   string `yaml:"webhook_url"`
+	ChannelID    string `yaml:"channel_id"`
+}
+
+var config *Config
+
 var (
-	clientID, clientSecret, redirectURL, webhookURL, channelID string
+	oauthConfig      *oauth2.Config
+	state            = "randomstatestring"
+	token            *oauth2.Token
+	tokenMutex       sync.Mutex
+	latestCount      uint64
+	latestCountMutex sync.Mutex
 )
 
 func init() {
@@ -29,31 +44,25 @@ func init() {
 		panic(fmt.Sprintf("Read config file error: %v", err))
 	}
 
-	config := yaml.NewDecoder(bytes.NewReader(data))
-	err = config.Decode(&config)
+	config = &Config{}
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	err = decoder.Decode(config)
 	if err != nil {
 		panic(fmt.Sprintf("Decode config file error: %v", err))
 	}
 
-	if clientID == "" || clientSecret == "" || redirectURL == "" || webhookURL == "" || channelID == "" {
-		panic("Missing configuration values")
+	if config.ClientID == "" || config.ClientSecret == "" || config.RedirectURL == "" || config.WebhookURL == "" || config.ChannelID == "" {
+		panic("Invalid configuration")
 	}
-}
 
-var (
 	oauthConfig = &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		RedirectURL:  redirectURL,
+		ClientID:     config.ClientID,
+		ClientSecret: config.ClientSecret,
+		RedirectURL:  config.RedirectURL,
 		Scopes:       []string{youtube.YoutubeReadonlyScope},
 		Endpoint:     google.Endpoint,
 	}
-	state            = "randomstatestring"
-	token            *oauth2.Token
-	tokenMutex       sync.Mutex
-	latestCount      uint64
-	latestCountMutex sync.Mutex
-)
+}
 
 func main() {
 	http.HandleFunc("/", handleHome)
@@ -109,7 +118,7 @@ func monitorSubscriberCount() {
 			continue
 		}
 
-		call := service.Channels.List([]string{"statistics"}).Id(channelID)
+		call := service.Channels.List([]string{"statistics"}).Id(config.ChannelID)
 		response, err := call.Do()
 		if err != nil {
 			log.Printf("Error fetching channel statistics: %v", err)
@@ -117,7 +126,7 @@ func monitorSubscriberCount() {
 		}
 
 		if len(response.Items) == 0 {
-			log.Printf("No channel found with ID: %s", channelID)
+			log.Printf("No channel found with ID: %s", config.ChannelID)
 			continue
 		}
 
@@ -139,7 +148,7 @@ func sendWebhookNotification(subscriberCount uint64) {
 	}
 	body, _ := json.Marshal(payload)
 
-	resp, err := http.Post(webhookURL, "application/json", bytes.NewBuffer(body))
+	resp, err := http.Post(config.WebhookURL, "application/json", bytes.NewBuffer(body))
 	if err != nil {
 		log.Printf("Error sending webhook notification: %v", err)
 		return
