@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"sync"
@@ -19,11 +20,13 @@ import (
 
 // Configuration
 type Config struct {
-	ClientID     string `yaml:"client_id"`
-	ClientSecret string `yaml:"client_secret"`
-	RedirectURL  string `yaml:"redirect_url"`
-	WebhookURL   string `yaml:"webhook_url"`
-	ChannelID    string `yaml:"channel_id"`
+	ClientID     string   `yaml:"client_id"`
+	ClientSecret string   `yaml:"client_secret"`
+	RedirectURL  string   `yaml:"redirect_url"`
+	WebhookURL   string   `yaml:"webhook_url"`
+	ChannelID    string   `yaml:"channel_id"`
+	BotKey       string   `yaml:"bot_key"`
+	ChatIDs      []string `yaml:"chat_ids"`
 }
 
 var config *Config
@@ -134,7 +137,8 @@ func monitorSubscriberCount() {
 		latestCountMutex.Lock()
 		if subscriberCount != latestCount {
 			latestCount = subscriberCount
-			sendWebhookNotification(subscriberCount)
+			// sendWebhookNotification(subscriberCount)
+			sendTelegramNotification(subscriberCount)
 		}
 		latestCountMutex.Unlock()
 	}
@@ -157,5 +161,39 @@ func sendWebhookNotification(subscriberCount uint64) {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Unexpected status code from webhook: %d", resp.StatusCode)
+	}
+}
+
+func sendTelegramNotification(subscriberCount uint64) {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", config.BotKey)
+	method := "POST"
+
+	for _, chatID := range config.ChatIDs {
+		payload := &bytes.Buffer{}
+		writer := multipart.NewWriter(payload)
+		_ = writer.WriteField("text", fmt.Sprintf("Subscriber count: %d", subscriberCount))
+		_ = writer.WriteField("chat_id", chatID)
+		_ = writer.WriteField("caption", "")
+		_ = writer.WriteField("parse_mode", "MarkdownV2")
+		_ = writer.WriteField("disable_notification", "true")
+		err := writer.Close()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		client := &http.Client{}
+		req, err := http.NewRequest(method, url, payload)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		res, err := client.Do(req)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer res.Body.Close()
 	}
 }
