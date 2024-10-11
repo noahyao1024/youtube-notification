@@ -203,7 +203,7 @@ func monitorSubscriberCount() {
 			// sendWebhookNotification(subscriberCount)
 			sendTelegramNotification(subscriberCount)
 		} else {
-			log.Println("Subscriber count is the same as before %d", subscriberCount)
+			log.Printf("Subscriber count is the same as before %d", subscriberCount)
 		}
 		latestCountMutex.Unlock()
 	}
