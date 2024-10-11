@@ -88,7 +88,7 @@ func handleHome(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleLogin(w http.ResponseWriter, r *http.Request) {
-	url := oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	url := oauthConfig.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.SetAuthURLParam("prompt", "consent"))
 	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
 }
 
