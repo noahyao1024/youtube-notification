@@ -112,7 +112,7 @@ func handleOAuth2Callback(w http.ResponseWriter, r *http.Request) {
 	token = tok
 	tokenMutex.Unlock()
 
-	fmt.Fprintf(w, "Login successful! You can close this window.")
+	fmt.Fprintf(w, "Login successful! Token is %v", tok)
 }
 
 func loadToken() (*oauth2.Token, error) {
