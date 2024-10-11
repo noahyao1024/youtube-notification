@@ -27,6 +27,7 @@ type Config struct {
 	ChannelID    string   `yaml:"channel_id"`
 	BotKey       string   `yaml:"bot_key"`
 	ChatIDs      []string `yaml:"chat_ids"`
+	SleepTime    int      `yaml:"sleep_time"`
 }
 
 var config *Config
@@ -68,6 +69,13 @@ func init() {
 }
 
 func main() {
+	// Load token if available
+	var err error
+	token, err = loadToken()
+	if err != nil {
+		log.Println("No token found, please authenticate via /login")
+	}
+
 	http.HandleFunc("/", handleHome)
 	http.HandleFunc("/login", handleLogin)
 	http.HandleFunc("/oauth2callback", handleOAuth2Callback)
@@ -104,14 +112,54 @@ func handleOAuth2Callback(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Login successful! You can close this window.")
 }
 
+func loadToken() (*oauth2.Token, error) {
+	file, err := os.Open("token.json")
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	tok := &oauth2.Token{}
+	err = json.NewDecoder(file).Decode(tok)
+	return tok, err
+}
+
+func saveToken(tok *oauth2.Token) {
+	file, err := os.Create("token.json")
+	if err != nil {
+		log.Fatalf("Unable to cache oauth token: %v", err)
+	}
+	defer file.Close()
+	json.NewEncoder(file).Encode(tok)
+}
+
 func monitorSubscriberCount() {
+	sleepTime := config.SleepTime
+	if sleepTime == 0 {
+		sleepTime = 60
+	}
+
 	for {
-		time.Sleep(10 * time.Second) // Adjust the interval as needed
+		log.Printf("Checking subscriber count...")
+		time.Sleep(time.Duration(sleepTime) * time.Second) // Adjust the interval as needed
 		tokenMutex.Lock()
 		if token == nil {
 			tokenMutex.Unlock()
+			log.Printf("No token found, skipping check")
 			continue
 		}
+
+		// Refresh the token if expired
+		if token.Expiry.Before(time.Now()) {
+			newToken, err := oauthConfig.TokenSource(context.Background(), token).Token()
+			if err != nil {
+				log.Printf("Error refreshing token: %v", err)
+				tokenMutex.Unlock()
+				continue
+			}
+			token = newToken
+			saveToken(token) // Save the new token with a new expiry time
+		}
+
 		client := oauthConfig.Client(context.Background(), token)
 		tokenMutex.Unlock()
 
@@ -135,6 +183,8 @@ func monitorSubscriberCount() {
 
 		subscriberCount := response.Items[0].Statistics.SubscriberCount
 		latestCountMutex.Lock()
+
+		log.Printf("Get subscriberCount from Youtube %d", subscriberCount)
 		if subscriberCount != latestCount {
 			latestCount = subscriberCount
 			// sendWebhookNotification(subscriberCount)
