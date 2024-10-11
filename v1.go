@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,7 +38,7 @@ var (
 	state            = "randomstatestring"
 	token            *oauth2.Token
 	tokenMutex       sync.Mutex
-	latestCount      uint64
+	latestCount      int64
 	latestCountMutex sync.Mutex
 )
 
@@ -188,17 +189,27 @@ func monitorSubscriberCount() {
 		subscriberCount := response.Items[0].Statistics.SubscriberCount
 		latestCountMutex.Lock()
 
-		log.Printf("Get subscriberCount from Youtube %d", subscriberCount)
-		if subscriberCount != latestCount {
-			latestCount = subscriberCount
+		log.Printf("Get subscriberCount from YouTube %d", subscriberCount)
+
+		if latestCount == 0 {
+			latestCountBytes, _ := os.ReadFile("latestCount.txt")
+			latestCount, _ = strconv.ParseInt(string(latestCountBytes), 10, 64)
+		}
+
+		if int64(subscriberCount) != latestCount {
+			latestCount = int64(subscriberCount)
+			_ = os.WriteFile("latestCount.txt", []byte(strconv.FormatInt(latestCount, 10)), 0644)
+
 			// sendWebhookNotification(subscriberCount)
 			sendTelegramNotification(subscriberCount)
+		} else {
+			log.Println("Subscriber count is the same as before %d", subscriberCount)
 		}
 		latestCountMutex.Unlock()
 	}
 }
 
-func sendWebhookNotification(subscriberCount uint64) {
+func sendWebhookNotification(subscriberCount int64) {
 	fmt.Println("Sending webhook notification with subscriber count:", subscriberCount)
 
 	payload := map[string]interface{}{
