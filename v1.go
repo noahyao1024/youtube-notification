@@ -105,6 +105,9 @@ func handleOAuth2Callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Store the token for later use (including refresh token)
+	saveToken(tok)
+
 	tokenMutex.Lock()
 	token = tok
 	tokenMutex.Unlock()
@@ -139,8 +142,9 @@ func monitorSubscriberCount() {
 	}
 
 	for {
-		log.Printf("Checking subscriber count...")
+		log.Printf("Sleeping for %d seconds...", sleepTime)
 		time.Sleep(time.Duration(sleepTime) * time.Second) // Adjust the interval as needed
+		log.Printf("Check subscriber count...")
 		tokenMutex.Lock()
 		if token == nil {
 			tokenMutex.Unlock()
